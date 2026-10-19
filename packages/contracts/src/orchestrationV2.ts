@@ -3068,6 +3068,7 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   getWorkflowScript: "orchestration.getWorkflowScript",
   stopWorkflow: "orchestration.stopWorkflow",
   getTurnItem: "orchestration.getTurnItem",
+  suggestNextPrompt: "orchestration.suggestNextPrompt",
   launchThread: "orchestration.launchThread",
   subscribeArchivedShell: "orchestration.subscribeArchivedShell",
   subscribeShell: "orchestration.subscribeShell",
@@ -3449,6 +3450,24 @@ export const OrchestrationV2GetTurnItemResult = Schema.Struct({
 });
 export type OrchestrationV2GetTurnItemResult = typeof OrchestrationV2GetTurnItemResult.Type;
 
+/** `afterMessageId` is the agent reply the client wants a follow-up to. */
+export const OrchestrationV2SuggestNextPromptInput = Schema.Struct({
+  threadId: ThreadId,
+  afterMessageId: MessageId,
+});
+export type OrchestrationV2SuggestNextPromptInput =
+  typeof OrchestrationV2SuggestNextPromptInput.Type;
+
+/**
+ * Null when suggestions are off, `afterMessageId` is no longer the thread's settled last
+ * message, or the model saw no clear next step.
+ */
+export const OrchestrationV2SuggestNextPromptResult = Schema.Struct({
+  suggestion: Schema.NullOr(Schema.String),
+});
+export type OrchestrationV2SuggestNextPromptResult =
+  typeof OrchestrationV2SuggestNextPromptResult.Type;
+
 const WORKFLOW_SCRIPT_ERROR_MESSAGES = {
   "invalid-path": "Workflow scripts must be absolute .js paths.",
   "root-unavailable": "Script root unavailable.",
@@ -3570,6 +3589,10 @@ export const OrchestrationV2RpcSchemas = {
   getTurnItem: {
     input: OrchestrationV2GetTurnItemInput,
     output: OrchestrationV2GetTurnItemResult,
+  },
+  suggestNextPrompt: {
+    input: OrchestrationV2SuggestNextPromptInput,
+    output: OrchestrationV2SuggestNextPromptResult,
   },
   launchThread: {
     input: OrchestrationV2ThreadLaunchInput,
