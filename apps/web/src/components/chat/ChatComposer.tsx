@@ -2797,13 +2797,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
-  const nextPromptSuggestion = useNextPromptSuggestion({
-    environmentId,
-    threadId: routeKind === "server" ? activeThreadId : null,
-    enabled: settings.promptSuggestionsEnabled && canOperateThread,
-    idle: phase !== "running",
-    messages: promptHistoryMessages,
-  });
+  const { suggestion: nextPromptSuggestion, dismiss: dismissPromptSuggestion } =
+    useNextPromptSuggestion({
+      environmentId,
+      threadId: routeKind === "server" ? activeThreadId : null,
+      enabled: settings.promptSuggestionsEnabled && canOperateThread,
+      idle: phase !== "running",
+      messages: promptHistoryMessages,
+    });
   const offeredPromptSuggestion =
     nextPromptSuggestion !== null &&
     !isComposerApprovalState &&
@@ -4176,6 +4177,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive =
       !isLiteralPendingAnswer && (composerMenuOpenRef.current || trigger !== null);
+    // Tab or Right Arrow accepts, as in the Claude Code CLI; Escape hides it until the next reply.
+    if (
+      (key === "Tab" || key === "ArrowRight" || key === "Escape") &&
+      offeredPromptSuggestion !== null &&
+      !menuIsActive &&
+      promptRef.current.length === 0 &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.isComposing
+    ) {
+      if (key === "Escape") {
+        dismissPromptSuggestion();
+      } else {
+        replacePromptFromHistory(offeredPromptSuggestion);
+      }
+      return true;
+    }
     if (key === "Escape") {
       if (!menuIsActive || event.isComposing || event.keyCode === 229) return false;
       dismissComposerTrigger(trigger);
@@ -4212,19 +4232,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
         submissionIntent,
       );
-      return true;
-    }
-    if (
-      key === "Tab" &&
-      offeredPromptSuggestion !== null &&
-      promptRef.current.length === 0 &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      !event.ctrlKey &&
-      !event.isComposing
-    ) {
-      replacePromptFromHistory(offeredPromptSuggestion);
       return true;
     }
     if (key === "Enter" && isTaskItem) return false;

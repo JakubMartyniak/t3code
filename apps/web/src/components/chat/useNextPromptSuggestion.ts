@@ -31,7 +31,7 @@ export function observeTurn(
  * The prompt the user is most likely to send next, once the agent has settled on a reply.
  * Requested once per agent reply; anything after it (a new message, streaming) hides it.
  * Only replies that finish while the thread is open qualify, so browsing old threads never
- * runs a model.
+ * runs a model. `dismiss` hides the current suggestion until the agent replies again.
  */
 export function useNextPromptSuggestion(input: {
   readonly environmentId: EnvironmentId;
@@ -39,7 +39,7 @@ export function useNextPromptSuggestion(input: {
   readonly enabled: boolean;
   readonly idle: boolean;
   readonly messages: ReadonlyArray<Pick<ChatMessage, "id" | "role" | "streaming">>;
-}): string | null {
+}): { readonly suggestion: string | null; readonly dismiss: () => void } {
   const suggest = useAtomCommand(orchestrationEnvironment.suggestNextPrompt, {
     reportFailure: false,
   });
@@ -90,5 +90,10 @@ export function useNextPromptSuggestion(input: {
     };
   }, [afterMessageId, input.threadId]);
 
-  return afterMessageId !== null && result?.messageId === afterMessageId ? result.suggestion : null;
+  return {
+    suggestion:
+      afterMessageId !== null && result?.messageId === afterMessageId ? result.suggestion : null,
+    dismiss: () =>
+      setResult((current) => (current === null ? null : { ...current, suggestion: null })),
+  };
 }

@@ -102,7 +102,7 @@ export function PromptSuggestionSettings() {
         settingKeys={["promptSuggestionsEnabled"]}
         mixed={mixedEnabled}
         {...searchableSetting("prompt-suggestions")}
-        description="After the agent finishes, suggests the message you are most likely to send next. Press Tab in an empty composer to accept it."
+        description="After the agent finishes, suggests the message you are most likely to send next. Press Tab in an empty composer to accept it, or Esc to hide it."
         control={
           <Switch
             mixed={mixedEnabled}
