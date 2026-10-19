@@ -1,14 +1,19 @@
 import type {
+  MessageId,
   OrchestrationV2ConversationMessage,
   OrchestrationV2Run,
   OrchestrationV2SuggestNextPromptInput,
   OrchestrationV2SuggestNextPromptResult,
+  ThreadId,
 } from "@t3tools/contracts";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
@@ -74,9 +79,9 @@ const make = Effect.gen(function* () {
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const textGeneration = yield* TextGeneration.TextGeneration;
 
-  const suggestNextPrompt: PromptSuggestionService["Service"]["suggestNextPrompt"] = Effect.fn(
-    "PromptSuggestionService.suggestNextPrompt",
-  )(function* (input) {
+  const generate = Effect.fn("PromptSuggestionService.generate")(function* (
+    input: OrchestrationV2SuggestNextPromptInput,
+  ) {
     const projection = yield* threads.getThreadRecords(input.threadId, ["messages", "runs"], {
       messageRoles: ["user", "assistant"],
     });
@@ -127,7 +132,24 @@ const make = Effect.gen(function* () {
       );
   });
 
-  return PromptSuggestionService.of({ suggestNextPrompt });
+  // Every viewer of a thread asks when the same reply settles, from each tab and device.
+  // Concurrent lookups for one reply share a single model call, and the answer is kept
+  // briefly for viewers that ask a little later. A failed lookup is not kept.
+  const suggestions = yield* Cache.makeWith(
+    (key: string) => {
+      const [threadId, afterMessageId] = JSON.parse(key) as [ThreadId, MessageId];
+      return generate({ threadId, afterMessageId });
+    },
+    {
+      capacity: 256,
+      timeToLive: (exit) => (Exit.isSuccess(exit) ? "5 minutes" : Duration.zero),
+    },
+  );
+
+  return PromptSuggestionService.of({
+    suggestNextPrompt: (input) =>
+      Cache.get(suggestions, JSON.stringify([input.threadId, input.afterMessageId])),
+  });
 });
 
 export const layer = Layer.effect(PromptSuggestionService, make);

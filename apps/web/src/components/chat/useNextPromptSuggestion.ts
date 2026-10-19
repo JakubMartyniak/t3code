@@ -6,25 +6,41 @@ import { orchestrationEnvironment } from "../../state/orchestration";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatMessage } from "../../types";
 
+type SuggestionMessage = Pick<ChatMessage, "id" | "role" | "streaming">;
+
 export interface ObservedTurn {
   readonly threadId: ThreadId | null;
-  readonly sawTurn: boolean;
+  readonly turnRunning: boolean;
+  /** The agent reply that settled when the last watched turn ended. */
+  readonly settledReplyId: MessageId | null;
 }
 
 /**
- * Whether a turn has run in the open thread since it was opened. Any thread switch, even
- * to an idle thread, forgets it, so returning to a thread whose reply finished in the
- * background never runs a model. Returns `observed` itself when nothing changed.
+ * Tracks which agent reply settled at the end of a turn watched in the open thread. Only
+ * that reply earns a suggestion: a reply exposed by a rollback or edit, or one that
+ * finished while another thread was open, never does. Any thread switch forgets the turn.
+ * Returns `observed` itself when nothing changed.
  */
 export function observeTurn(
   observed: ObservedTurn | null,
   threadId: ThreadId | null,
   idle: boolean,
+  lastMessage: SuggestionMessage | undefined,
 ): ObservedTurn {
   if (observed === null || observed.threadId !== threadId) {
-    return { threadId, sawTurn: !idle };
+    return { threadId, turnRunning: !idle, settledReplyId: null };
   }
-  return !idle && !observed.sawTurn ? { threadId, sawTurn: true } : observed;
+  if (!idle) {
+    return observed.turnRunning ? observed : { threadId, turnRunning: true, settledReplyId: null };
+  }
+  if (!observed.turnRunning || (lastMessage?.role === "assistant" && lastMessage.streaming)) {
+    return observed;
+  }
+  return {
+    threadId,
+    turnRunning: false,
+    settledReplyId: lastMessage?.role === "assistant" ? lastMessage.id : null,
+  };
 }
 
 /**
@@ -38,7 +54,7 @@ export function useNextPromptSuggestion(input: {
   readonly threadId: ThreadId | null;
   readonly enabled: boolean;
   readonly idle: boolean;
-  readonly messages: ReadonlyArray<Pick<ChatMessage, "id" | "role" | "streaming">>;
+  readonly messages: ReadonlyArray<SuggestionMessage>;
 }): { readonly suggestion: string | null; readonly dismiss: () => void } {
   const suggest = useAtomCommand(orchestrationEnvironment.suggestNextPrompt, {
     reportFailure: false,
@@ -51,22 +67,22 @@ export function useNextPromptSuggestion(input: {
     readonly suggestion: string | null;
   } | null>(null);
 
-  const [observed, setObserved] = useState(() => observeTurn(null, input.threadId, input.idle));
-  const nextObserved = observeTurn(observed, input.threadId, input.idle);
+  const lastMessage = input.messages.at(-1);
+  const [observed, setObserved] = useState(() =>
+    observeTurn(null, input.threadId, input.idle, lastMessage),
+  );
+  const nextObserved = observeTurn(observed, input.threadId, input.idle, lastMessage);
   if (nextObserved !== observed) {
     setObserved(nextObserved);
   }
 
-  const lastMessage = input.messages.at(-1);
   const afterMessageId =
     input.enabled &&
-    nextObserved.sawTurn &&
     canSuggest &&
-    input.idle &&
     input.threadId !== null &&
-    lastMessage?.role === "assistant" &&
-    !lastMessage.streaming
-      ? lastMessage.id
+    nextObserved.settledReplyId !== null &&
+    nextObserved.settledReplyId === lastMessage?.id
+      ? nextObserved.settledReplyId
       : null;
 
   const request = useEffectEvent(
