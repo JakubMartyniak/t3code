@@ -141,6 +141,7 @@ import { useComposerMenuState } from "./useComposerMenuState";
 import { useComposerTriggerState } from "./useComposerTriggerState";
 import { useComposerFocusState } from "./useComposerFocusState";
 import { useComposerMultilinePrompt } from "./useComposerMultilinePrompt";
+import { useNextPromptSuggestion } from "./useNextPromptSuggestion";
 import {
   ComposerTasksBadge,
   ComposerTasksContent,
@@ -2796,6 +2797,20 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
+  const nextPromptSuggestion = useNextPromptSuggestion({
+    environmentId,
+    threadId: routeKind === "server" ? activeThreadId : null,
+    enabled: settings.promptSuggestionsEnabled && canOperateThread,
+    idle: phase !== "running",
+    messages: promptHistoryMessages,
+  });
+  const offeredPromptSuggestion =
+    nextPromptSuggestion !== null &&
+    !isComposerApprovalState &&
+    activePendingProgress === null &&
+    !showPlanFollowUpPrompt
+      ? nextPromptSuggestion
+      : null;
   const showComposerTopDrawer =
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
@@ -4197,6 +4212,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
         submissionIntent,
       );
+      return true;
+    }
+    if (
+      key === "Tab" &&
+      offeredPromptSuggestion !== null &&
+      promptRef.current.length === 0 &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.isComposing
+    ) {
+      replacePromptFromHistory(offeredPromptSuggestion);
       return true;
     }
     if (key === "Enter" && isTaskItem) return false;
@@ -7120,7 +7148,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                 ? "Enable a provider in Settings to send a message"
                                 : phase === "disconnected"
                                   ? DISCONNECTED_COMPOSER_PLACEHOLDER
-                                  : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                                  : offeredPromptSuggestion !== null
+                                    ? `${offeredPromptSuggestion}  ⇥ Tab`
+                                    : "Ask anything, @tag files/folders, $use skills, or / for commands"
                     }
                     disabled={
                       isConnecting ||

@@ -347,6 +347,7 @@ function createTextGeneration(
         title: "Update workflow",
       }),
     generateReviewGuide: () => Effect.succeed({ stops: [] }),
+    generatePromptSuggestion: () => Effect.succeed({ suggestion: "" }),
     ...overrides,
   };
 
@@ -396,6 +397,7 @@ function createTextGeneration(
         ),
       ),
     generateReviewGuide: (input) => implementation.generateReviewGuide(input),
+    generatePromptSuggestion: (input) => implementation.generatePromptSuggestion(input),
   };
 }
 
